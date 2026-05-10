@@ -1,6 +1,6 @@
-# File Color Tag Extension for Nautilus
+# File Color Tag 2.0.0 — Extension for Nautilus
 # https://github.com/dmz86/file-color-tag
-# Copyright (c) 2025 Marco Domiziani
+# Copyright (c) 2025-2026 Marco Domiziani
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the “Software”), to deal
@@ -22,17 +22,70 @@
 
 import gi
 import os
-import gettext
+import locale
 import base64
 import subprocess
-gi.require_version("Gtk", "3.0")
-gi.require_version("Nautilus", "4.0")
+# Compatibilità multi-versione: Nautilus 4.1 (Ubuntu 26.04+) o 4.0 (Ubuntu 24.04)
+try:
+    gi.require_version("Nautilus", "4.1")
+except ValueError:
+    gi.require_version("Nautilus", "4.0")
 # noinspection PyUnresolvedReferences
 
 from gi.repository import Nautilus, GObject, Gio
-# i18n
-gettext.textdomain("folder_i18n")
-_ = gettext.gettext
+
+# Traduzioni integrate — per aggiungere una lingua, copiare il blocco "it" con il nuovo codice locale
+_TRANSLATIONS = {
+    "it": {
+        "Color label": "Etichetta colore",
+        "Assign a color label to the selected items": "Assegna un'etichetta colore agli elementi selezionati",
+        "Toggle color": "Attiva/disattiva colore",
+        "Remove all labels": "Rimuovi tutte le etichette",
+        "Remove all color labels from the selected items": "Rimuove tutte le etichette colore dagli elementi selezionati",
+        "Icons installed and icon cache updated": "Icone installate e cache icone aggiornata",
+        "Red": "Rosso",
+        "Orange": "Arancione",
+        "Yellow": "Giallo",
+        "Green": "Verde",
+        "Blue": "Blu",
+        "Violet": "Viola",
+        "Brown": "Marrone",
+        "Grey": "Grigio",
+        "White": "Bianco",
+    },
+    # Per aggiungere altre lingue:
+    # "fr": { "Color label": "Étiquette couleur", ... },
+    # "de": { "Color label": "Farbetikett", ... },
+}
+
+# Definizione colori: (chiave_traduzione, nome_emblema, emoji)
+_COLORS = [
+    ("Red",    "emblem-colors-red",    "🔴"),
+    ("Orange", "emblem-colors-orange", "🟠"),
+    ("Yellow", "emblem-colors-yellow", "🟡"),
+    ("Green",  "emblem-colors-green",  "🟢"),
+    ("Blue",   "emblem-colors-blue",   "🔵"),
+    ("Violet", "emblem-colors-violet", "🟣"),
+    ("Brown",  "emblem-colors-brown",  "🟤"),
+    ("Grey",   "emblem-colors-grey",   "⚫"),
+    ("White",  "emblem-colors-white",  "⚪"),
+]
+
+def _detect_language():
+    """Rileva la lingua del sistema dal locale."""
+    try:
+        lang = locale.getlocale()[0] or ""
+    except Exception:
+        lang = ""
+    if not lang:
+        lang = os.environ.get("LANG", os.environ.get("LANGUAGE", "en"))
+    return lang[:2].lower() if lang else "en"
+
+_LANG = _detect_language()
+
+def _(text):
+    """Restituisce la traduzione nella lingua corrente, o il testo originale come fallback."""
+    return _TRANSLATIONS.get(_LANG, {}).get(text, text)
 
 class FileStatusEmblemsExtension(GObject.GObject, Nautilus.MenuProvider):
     def get_file_items(self, files):
@@ -92,7 +145,7 @@ class FileStatusEmblemsExtension(GObject.GObject, Nautilus.MenuProvider):
                     '''iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAEyUlEQVRYw+2XzW9UVRjGf++589WZaSulfEswRmAD5XMj4sIlGyUlkWBijFvLwuifYUzcIH8AGldWExNdEgJRF6RCJSEBsZEAUlragZm2M/fe874u7p32ztBBUBJdcJKTe+fee8553ud93uecgeftP27yNB/PXGanuNwoUh5F/GbT1loAccX7mLuNLoyb6vi6vVx7pgBmJjmAlT8nGNhVXvNmkKseLga5DUgwBID5OXx0l6hxvtWsfefR+qTZ4ti6PUz8KwB2kfxMvnQaGThR3fhhX6H6mgghZi1AwXw6SwA4RIoYBcLGBWvc/WzJfP2L9bXmmLxB/NQA/phkTSEq/FDsP7yrf/PHFSHE9CEgSLpgZ1PMPGCIG8AoUL/zyVJY/3mylW8e2TbC/BMDuHiR/BZKF/qGju6rrj+RV38PLE4XDkBcOrQ93JJuCvgEiORxwToa976Klua+ndhYbx5ejQm3GoBNVjydqxzYVRkezftoCrQBFmEWYRZiGoJ1dtMweWcRWARax0dTVIZH87nKgZE7ldLpJ2Lg5gUOBsWhc8PbPy2j95PJ0shFXIrZgXQNNUt0gWIpE6RM4NYyc/2jxTief/2lVzuF+SgDrnCqf8PxPvQBpvWViKwdYSJC01YStYbJvbWW3yespIxpHfQBA+uP90Hp1GNT8PsFdiKVXYX+3aLxdLpwtDLxI9S30p55pmEGSDJe42kKAyPiKI3cOMf23gzE7lhxcH+Ar4G1lnO+nOduFla97/4+SkBqjeLg/gDcaG8AUjjaV9leNJ3vFFgHC9mou+41CyTqnMPXKFV2FJFCB4Bc9odX3eryVUwbyyUFAWI+FZ3DEDDpIcJ2VzDDaItRQesEuSoa64s9AWgcr3Euj+kSgiQ1j8do131yFSRZp9s5uwC0qwLzmBkueAHVeKgnAFNAmwlluJQBh+AyUUvCwiMVnGEgZcOWAWj6vIn6zlGdDKibi6PaJpczxEIwB5LSTtb9JDURyUROFwDNuKNiEhCHc6DufvJuNQaQW2FzdlNfpZwILjUdaQPoyL10ZcG6tKAJsBSAUCRqzqImt3qLMPbjC3O/7S5V9pRoAzCHSSZyS69C515gXWnoYEIxKdGYv9FU77/uWYYa6fjD2Sk1s47SM3vU+9G0JLW1ikF1e0aEmVGfmdJQ9ZueAPaOcs37ePLh7HVFcpn6fpwJ9TAjDVc8QnLUZ65p7P2lA2/xW88UAMQ+Hrv3x6/nq4PDZXHtQ4eAuTT98phjRKp+Y0WEEmCxZ/rmlSZhPPa32/HBY0z42H95+/rEAhaAxctMrGy5j2EgG7nFYAG3r08saqRn9r3NpSc6D9TX6geLD+av3J26GkKAWbyyULoLrthwawVchxXHGI7pqauthdr85YfD/uRTHcnOf8maQhB8X65Wdm/d8XJFAksiQnoMzRSlBJgXbl37fXFxYWEyv+iP7Huf2lMfSs+eJVf+051GeGfDtg2lwfWDLrHhbLlldCGCYdSmazpz815TjTNLm/TkG//kUJptP51hPyKnRGRkYKjs+oeqpUIpR74QABCFnrAZ0ZhrLD2YWzIzu2TeTh56j1+e6R+TH8/wiinHXE5GTdmiyjCAc8yKcEvVxkUYP/RuZ6k9b//r9hfj66gsrD26EAAAAABJRU5ErkJggg=='''))
 
             subprocess.run(['gtk-update-icon-cache', icon_dir])
-            print('✔️ Icons installed and icon cache updated.')
+            print(f'✔️ {_("Icons installed and icon cache updated")}')
 
 
     def get_background_items(self, current_folder):
@@ -101,73 +154,53 @@ class FileStatusEmblemsExtension(GObject.GObject, Nautilus.MenuProvider):
     def _create_menu(self, files):
         top_menu = Nautilus.MenuItem(
             name="FileStatusEmblemsExtension::Top",
-            label="Set color TAG ...",
-            tip=" Add a color TAG to the file"
+            label=_("Color label"),
+            tip=_("Assign a color label to the selected items")
         )
 
         submenu = Nautilus.Menu()
         top_menu.set_submenu(submenu)
 
-        states = {
-            _("Red"): "emblem-colors-red",
-            _("Orange"): "emblem-colors-orange",
-            _("Yellow"): "emblem-colors-yellow",
-            _("Green"): "emblem-colors-green",
-            _("Blue"): "emblem-colors-blue",
-            _("Violet"): "emblem-colors-violet",
-            _("Brown"): "emblem-colors-brown",
-            _("Grey"): "emblem-colors-grey",
-            _("White"): "emblem-colors-white"
-        }
-        emoji_colors = {
-            "emblem-colors-red": "🔴",
-            "emblem-colors-orange": "🟠",
-            "emblem-colors-yellow": "🟡",
-            "emblem-colors-green": "🟢",
-            "emblem-colors-blue": "🔵",
-            "emblem-colors-violet": "🟣",
-            "emblem-colors-brown": "🟤",
-            "emblem-colors-grey": "⚫",
-            "emblem-colors-white": "⚪"
-        }
+        for color_key, emblem, emoji in _COLORS:
+            # Verifica se tutti i file selezionati hanno già questo emblema
+            all_have_emblem = all(
+                self._file_has_emblem(f, emblem) for f in files
+            )
 
-        for label, emblem in states.items():
-            all_have_emblem = True
-            for f in files:
-                location = f.get_location()
-                if not location:
-                    continue
-                path = location.get_path()
-                gio_file = Gio.File.new_for_path(path)
-                try:
-                    info = gio_file.query_info("metadata::emblems", Gio.FileQueryInfoFlags.NONE, None)
-                    emblems = info.get_attribute_stringv("metadata::emblems") or []
-                    if emblem not in emblems:
-                        all_have_emblem = False
-                        break
-                except Exception:
-                    all_have_emblem = False
-                    break
-
-            emoji = emoji_colors.get(emblem, "")
+            label = _(color_key)
             display_label = f"✔️ {emoji} {label}" if all_have_emblem else f"{emoji} {label}"
 
             item = Nautilus.MenuItem(
-                name=f"FileStatusEmblemsExtension::{label}",
+                name=f"FileStatusEmblemsExtension::{color_key}",
                 label=display_label,
-                tip=f"{_('Add color')} {label.lower()}"
+                tip=f"{_("Toggle color")} {label.lower()}"
             )
             item.connect("activate", self.set_emblem, files, emblem)
             submenu.append_item(item)
+
+        # Separatore visivo con voce di rimozione
         remove_item = Nautilus.MenuItem(
             name="FileStatusEmblemsExtension::Remove",
-            label=_("Remove Color TAG"),
-            tip=_("Removes the current color TAG")
+            label=f"✖ {_("Remove all labels")}",
+            tip=_("Remove all color labels from the selected items")
         )
         remove_item.connect("activate", self.remove_emblem, files)
         submenu.append_item(remove_item)
 
         return [top_menu]
+
+    def _file_has_emblem(self, file_info, emblem):
+        """Verifica se un file ha già un determinato emblema."""
+        location = file_info.get_location()
+        if not location:
+            return False
+        try:
+            gio_file = Gio.File.new_for_path(location.get_path())
+            info = gio_file.query_info("metadata::emblems", Gio.FileQueryInfoFlags.NONE, None)
+            emblems = info.get_attribute_stringv("metadata::emblems") or []
+            return emblem in emblems
+        except Exception:
+            return False
 
     def set_emblem(self, menu, files, emblem_name):
         for f in files:
