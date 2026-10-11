@@ -1,4 +1,4 @@
-# File Color Tag 2.0.0
+# File Color Tag 2.1.0
 
 **File Color Tag** is a Nautilus extension for GNOME that brings macOS-style color labels to Linux.  
 It allows you to mark files and folders with color-coded labels directly from the right-click context menu, improving visual organization and quick identification.
@@ -107,6 +107,14 @@ gtk-update-icon-cache ~/.icons/hicolor/48x48/emblems/
 ```
 
 ## 📋 Changelog
+
+### 2.1.0
+- Significant performance optimizations for local and network filesystems (CIFS/Samba, NFS)
+- Single GIO metadata query per file (reduces queries from 9×N to 1×N)
+- Safeguard for large selections (bypasses sync checks when > 15 files are selected to prevent UI freeze)
+- Replaced `os.utime()` with `file_info.invalidate_extension_info()` to avoid remote CIFS writes and file timestamp alterations
+- One-time icon installation verification per session
+- Direct use of `Gio.File` location without redundant path reconstruction
 
 ### 2.0.0
 - Multi-version Nautilus API support (4.0 / 4.1)

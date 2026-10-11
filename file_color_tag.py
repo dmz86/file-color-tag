@@ -1,4 +1,4 @@
-# File Color Tag 2.0.0 — Extension for Nautilus
+# File Color Tag 2.1.0 — Extension for Nautilus
 # https://github.com/dmz86/file-color-tag
 # Copyright (c) 2025-2026 Marco Domiziani
 #
@@ -71,6 +71,14 @@ _COLORS = [
     ("White",  "emblem-colors-white",  "⚪"),
 ]
 
+# Soglia massima di elementi selezionati per la verifica sincrona degli emblemi.
+# Oltre questa soglia, si salta il controllo per garantire l'apertura istantanea del menu.
+MAX_CHECK_FILES = 15
+
+# Flag per verificare/installare le icone una sola volta per sessione
+_ICONS_INITIALIZED = False
+
+
 def _detect_language():
     """Rileva la lingua del sistema dal locale."""
     try:
@@ -95,6 +103,9 @@ class FileStatusEmblemsExtension(GObject.GObject, Nautilus.MenuProvider):
         return self._create_menu(files)
 
     def create_icons(self):
+        global _ICONS_INITIALIZED
+        if _ICONS_INITIALIZED:
+            return
         icon_dir = os.path.expanduser('~/.icons/hicolor/48x48/emblems/')
         if not os.path.exists(icon_dir):
             os.makedirs(icon_dir, exist_ok=True)
@@ -146,6 +157,7 @@ class FileStatusEmblemsExtension(GObject.GObject, Nautilus.MenuProvider):
 
             subprocess.run(['gtk-update-icon-cache', icon_dir])
             print(f'✔️ {_("Icons installed and icon cache updated")}')
+        _ICONS_INITIALIZED = True
 
 
     def get_background_items(self, current_folder):
@@ -161,11 +173,18 @@ class FileStatusEmblemsExtension(GObject.GObject, Nautilus.MenuProvider):
         submenu = Nautilus.Menu()
         top_menu.set_submenu(submenu)
 
+        num_files = len(files)
+        # Se la selezione è contenuta, interroghiamo gli emblemi una sola volta per file.
+        # Per selezioni numerose (es. cartelle remote), saltiamo il controllo delle spunte
+        # per mantenere immediata l'apertura del menu contestuale senza bloccare il thread UI.
+        check_emblems = num_files <= MAX_CHECK_FILES
+        file_emblems_list = [self._get_file_emblems(f) for f in files] if check_emblems else []
+
         for color_key, emblem, emoji in _COLORS:
-            # Verifica se tutti i file selezionati hanno già questo emblema
-            all_have_emblem = all(
-                self._file_has_emblem(f, emblem) for f in files
-            )
+            if check_emblems and file_emblems_list:
+                all_have_emblem = all(emblem in emblems for emblems in file_emblems_list)
+            else:
+                all_have_emblem = False
 
             label = _(color_key)
             display_label = f"✔️ {emoji} {label}" if all_have_emblem else f"{emoji} {label}"
@@ -173,7 +192,7 @@ class FileStatusEmblemsExtension(GObject.GObject, Nautilus.MenuProvider):
             item = Nautilus.MenuItem(
                 name=f"FileStatusEmblemsExtension::{color_key}",
                 label=display_label,
-                tip=f"{_("Toggle color")} {label.lower()}"
+                tip=f"{_('Toggle color')} {label.lower()}"
             )
             item.connect("activate", self.set_emblem, files, emblem)
             submenu.append_item(item)
@@ -181,7 +200,7 @@ class FileStatusEmblemsExtension(GObject.GObject, Nautilus.MenuProvider):
         # Separatore visivo con voce di rimozione
         remove_item = Nautilus.MenuItem(
             name="FileStatusEmblemsExtension::Remove",
-            label=f"✖ {_("Remove all labels")}",
+            label=f"✖ {_('Remove all labels')}",
             tip=_("Remove all color labels from the selected items")
         )
         remove_item.connect("activate", self.remove_emblem, files)
@@ -189,26 +208,30 @@ class FileStatusEmblemsExtension(GObject.GObject, Nautilus.MenuProvider):
 
         return [top_menu]
 
-    def _file_has_emblem(self, file_info, emblem):
-        """Verifica se un file ha già un determinato emblema."""
+    def _get_file_emblems(self, file_info):
+        """Restituisce il set di emblemi associati al file tramite singola query GIO."""
         location = file_info.get_location()
         if not location:
-            return False
+            return set()
         try:
-            gio_file = Gio.File.new_for_path(location.get_path())
-            info = gio_file.query_info("metadata::emblems", Gio.FileQueryInfoFlags.NONE, None)
-            emblems = info.get_attribute_stringv("metadata::emblems") or []
-            return emblem in emblems
+            info = location.query_info("metadata::emblems", Gio.FileQueryInfoFlags.NONE, None)
+            emblems = info.get_attribute_stringv("metadata::emblems")
+            return set(emblems) if emblems else set()
         except Exception:
-            return False
+            return set()
+
+    def _file_has_emblem(self, file_info, emblem):
+        """Verifica se un file ha già un determinato emblema (retrocompatibilità)."""
+        return emblem in self._get_file_emblems(file_info)
 
     def set_emblem(self, menu, files, emblem_name):
         for f in files:
-            path = f.get_location().get_path()
-            gio_file = Gio.File.new_for_path(path)
+            location = f.get_location()
+            if not location:
+                continue
             try:
-                info = gio_file.query_info("metadata::emblems", Gio.FileQueryInfoFlags.NONE, None)
-                current_emblems = info.get_attribute_stringv("metadata::emblems") or []
+                info = location.query_info("metadata::emblems", Gio.FileQueryInfoFlags.NONE, None)
+                current_emblems = list(info.get_attribute_stringv("metadata::emblems") or [])
 
                 if emblem_name in current_emblems:
                     current_emblems.remove(emblem_name)
@@ -216,23 +239,26 @@ class FileStatusEmblemsExtension(GObject.GObject, Nautilus.MenuProvider):
                     current_emblems.append(emblem_name)
 
                 info.set_attribute_stringv("metadata::emblems", current_emblems)
-                gio_file.set_attributes_from_info(info, Gio.FileQueryInfoFlags.NONE, None)
-                self._reload_icon(path)
+                location.set_attributes_from_info(info, Gio.FileQueryInfoFlags.NONE, None)
+                if hasattr(f, "invalidate_extension_info"):
+                    f.invalidate_extension_info()
 
             except Exception as e:
+                path = location.get_path() or f.get_uri()
                 print(f"Error modifying emblem '{emblem_name}' on {path}: {e}")
-
-    def _reload_icon(self, path):
-            os.utime(path, None)
 
     def remove_emblem(self, menu, files):
         for f in files:
-            path = f.get_location().get_path()
-            gio_file = Gio.File.new_for_path(path)
+            location = f.get_location()
+            if not location:
+                continue
             try:
-                info = gio_file.query_info("metadata::emblems", Gio.FileQueryInfoFlags.NONE, None)
+                info = location.query_info("metadata::emblems", Gio.FileQueryInfoFlags.NONE, None)
                 info.set_attribute_stringv("metadata::emblems", [])
-                gio_file.set_attributes_from_info(info, Gio.FileQueryInfoFlags.NONE, None)
-                self._reload_icon(path)
+                location.set_attributes_from_info(info, Gio.FileQueryInfoFlags.NONE, None)
+                if hasattr(f, "invalidate_extension_info"):
+                    f.invalidate_extension_info()
             except Exception as e:
+                path = location.get_path() or f.get_uri()
                 print(f"Error removing emblem from {path}: {e}")
+
