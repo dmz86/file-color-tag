@@ -1,4 +1,4 @@
-# File Color Tag 2.1.0 — Extension for Nautilus
+# File Color Tag 2.1.1 — Extension for Nautilus
 # https://github.com/dmz86/file-color-tag
 # Copyright (c) 2025-2026 Marco Domiziani
 #
@@ -240,12 +240,25 @@ class FileStatusEmblemsExtension(GObject.GObject, Nautilus.MenuProvider):
 
                 info.set_attribute_stringv("metadata::emblems", current_emblems)
                 location.set_attributes_from_info(info, Gio.FileQueryInfoFlags.NONE, None)
+                self._reload_icon(location.get_path())
                 if hasattr(f, "invalidate_extension_info"):
                     f.invalidate_extension_info()
 
             except Exception as e:
                 path = location.get_path() or f.get_uri()
                 print(f"Error modifying emblem '{emblem_name}' on {path}: {e}")
+
+    def _reload_icon(self, path):
+        if not path:
+            return
+        try:
+            st = os.stat(path)
+            os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns))
+        except Exception:
+            try:
+                os.utime(path, None)
+            except Exception:
+                pass
 
     def remove_emblem(self, menu, files):
         for f in files:
@@ -256,6 +269,7 @@ class FileStatusEmblemsExtension(GObject.GObject, Nautilus.MenuProvider):
                 info = location.query_info("metadata::emblems", Gio.FileQueryInfoFlags.NONE, None)
                 info.set_attribute_stringv("metadata::emblems", [])
                 location.set_attributes_from_info(info, Gio.FileQueryInfoFlags.NONE, None)
+                self._reload_icon(location.get_path())
                 if hasattr(f, "invalidate_extension_info"):
                     f.invalidate_extension_info()
             except Exception as e:
